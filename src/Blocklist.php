@@ -3,7 +3,7 @@
  * Email Blocklist
  *
  * A simple, efficient library for checking email addresses against disposable
- * email provider lists. Supports custom blocked/allowed domains.
+ * email provider lists. Supports custom blocked/allowed domains with persistence.
  *
  * @package     ArrayPress\EmailBlocklist
  * @copyright   Copyright (c) 2025, ArrayPress Limited
@@ -60,6 +60,20 @@ class Blocklist {
 	private string $data_path;
 
 	/**
+	 * Path to custom blocked domains file.
+	 *
+	 * @var string|null
+	 */
+	private ?string $custom_blocked_file = null;
+
+	/**
+	 * Path to custom allowed domains file.
+	 *
+	 * @var string|null
+	 */
+	private ?string $custom_allowed_file = null;
+
+	/**
 	 * Create a new Blocklist instance.
 	 *
 	 * @param array       $blocked   Custom domains to block.
@@ -80,6 +94,258 @@ class Blocklist {
 		if ( ! empty( $allowed ) ) {
 			$this->allow( $allowed );
 		}
+	}
+
+	/**
+	 * Load custom blocked domains from a JSON file.
+	 *
+	 * @param string $file Path to JSON file.
+	 *
+	 * @return self
+	 */
+	public function load_custom_blocked( string $file ): self {
+		$this->custom_blocked_file = $file;
+
+		if ( file_exists( $file ) ) {
+			$content = file_get_contents( $file );
+			$domains = json_decode( $content, true ) ?? [];
+
+			foreach ( $domains as $domain ) {
+				$domain = $this->normalize_domain( $domain );
+				if ( $domain !== '' ) {
+					$this->custom_blocked[ $domain ] = 1;
+				}
+			}
+		}
+
+		return $this;
+	}
+
+	/**
+	 * Load custom allowed domains from a JSON file.
+	 *
+	 * @param string $file Path to JSON file.
+	 *
+	 * @return self
+	 */
+	public function load_custom_allowed( string $file ): self {
+		$this->custom_allowed_file = $file;
+
+		if ( file_exists( $file ) ) {
+			$content = file_get_contents( $file );
+			$domains = json_decode( $content, true ) ?? [];
+
+			foreach ( $domains as $domain ) {
+				$domain = $this->normalize_domain( $domain );
+				if ( $domain !== '' ) {
+					$this->custom_allowed[ $domain ] = 1;
+				}
+			}
+		}
+
+		return $this;
+	}
+
+	/**
+	 * Save custom blocked domains to file.
+	 *
+	 * @param string|null $file Optional file path (uses loaded path if not provided).
+	 *
+	 * @return bool True on success.
+	 */
+	public function save_custom_blocked( ?string $file = null ): bool {
+		$file = $file ?? $this->custom_blocked_file;
+
+		if ( $file === null ) {
+			return false;
+		}
+
+		$domains = array_keys( $this->custom_blocked );
+		sort( $domains );
+
+		$content = json_encode( $domains, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+
+		return file_put_contents( $file, $content, LOCK_EX ) !== false;
+	}
+
+	/**
+	 * Save custom allowed domains to file.
+	 *
+	 * @param string|null $file Optional file path (uses loaded path if not provided).
+	 *
+	 * @return bool True on success.
+	 */
+	public function save_custom_allowed( ?string $file = null ): bool {
+		$file = $file ?? $this->custom_allowed_file;
+
+		if ( $file === null ) {
+			return false;
+		}
+
+		$domains = array_keys( $this->custom_allowed );
+		sort( $domains );
+
+		$content = json_encode( $domains, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+
+		return file_put_contents( $file, $content, LOCK_EX ) !== false;
+	}
+
+	/**
+	 * Add a domain to the custom blocklist and optionally save.
+	 *
+	 * @param string $domain  Domain to block.
+	 * @param bool   $persist Whether to save to file immediately.
+	 *
+	 * @return bool True on success.
+	 */
+	public function add_blocked( string $domain, bool $persist = true ): bool {
+		$domain = $this->normalize_domain( $domain );
+
+		if ( $domain === '' ) {
+			return false;
+		}
+
+		$this->custom_blocked[ $domain ] = 1;
+
+		if ( $persist && $this->custom_blocked_file !== null ) {
+			return $this->save_custom_blocked();
+		}
+
+		return true;
+	}
+
+	/**
+	 * Remove a domain from the custom blocklist and optionally save.
+	 *
+	 * @param string $domain  Domain to unblock.
+	 * @param bool   $persist Whether to save to file immediately.
+	 *
+	 * @return bool True if domain was found and removed.
+	 */
+	public function remove_blocked( string $domain, bool $persist = true ): bool {
+		$domain = $this->normalize_domain( $domain );
+
+		if ( ! isset( $this->custom_blocked[ $domain ] ) ) {
+			return false;
+		}
+
+		unset( $this->custom_blocked[ $domain ] );
+
+		if ( $persist && $this->custom_blocked_file !== null ) {
+			return $this->save_custom_blocked();
+		}
+
+		return true;
+	}
+
+	/**
+	 * Add a domain to the custom allowlist and optionally save.
+	 *
+	 * @param string $domain  Domain to allow.
+	 * @param bool   $persist Whether to save to file immediately.
+	 *
+	 * @return bool True on success.
+	 */
+	public function add_allowed( string $domain, bool $persist = true ): bool {
+		$domain = $this->normalize_domain( $domain );
+
+		if ( $domain === '' ) {
+			return false;
+		}
+
+		$this->custom_allowed[ $domain ] = 1;
+
+		if ( $persist && $this->custom_allowed_file !== null ) {
+			return $this->save_custom_allowed();
+		}
+
+		return true;
+	}
+
+	/**
+	 * Remove a domain from the custom allowlist and optionally save.
+	 *
+	 * @param string $domain  Domain to disallow.
+	 * @param bool   $persist Whether to save to file immediately.
+	 *
+	 * @return bool True if domain was found and removed.
+	 */
+	public function remove_allowed( string $domain, bool $persist = true ): bool {
+		$domain = $this->normalize_domain( $domain );
+
+		if ( ! isset( $this->custom_allowed[ $domain ] ) ) {
+			return false;
+		}
+
+		unset( $this->custom_allowed[ $domain ] );
+
+		if ( $persist && $this->custom_allowed_file !== null ) {
+			return $this->save_custom_allowed();
+		}
+
+		return true;
+	}
+
+	/**
+	 * Check if a domain is in the custom blocked list.
+	 *
+	 * @param string $domain Domain to check.
+	 *
+	 * @return bool True if in custom blocked list.
+	 */
+	public function is_custom_blocked( string $domain ): bool {
+		$domain = $this->normalize_domain( $domain );
+
+		return isset( $this->custom_blocked[ $domain ] );
+	}
+
+	/**
+	 * Check if a domain is in the custom allowed list.
+	 *
+	 * @param string $domain Domain to check.
+	 *
+	 * @return bool True if in custom allowed list.
+	 */
+	public function is_custom_allowed( string $domain ): bool {
+		$domain = $this->normalize_domain( $domain );
+
+		return isset( $this->custom_allowed[ $domain ] );
+	}
+
+	/**
+	 * Get all custom blocked domains.
+	 *
+	 * @return array List of blocked domains.
+	 */
+	public function get_custom_blocked(): array {
+		return array_keys( $this->custom_blocked );
+	}
+
+	/**
+	 * Get count of custom blocked domains.
+	 *
+	 * @return int Number of custom blocked domains.
+	 */
+	public function get_custom_blocked_count(): int {
+		return count( $this->custom_blocked );
+	}
+
+	/**
+	 * Get all custom allowed domains.
+	 *
+	 * @return array List of allowed domains.
+	 */
+	public function get_custom_allowed(): array {
+		return array_keys( $this->custom_allowed );
+	}
+
+	/**
+	 * Get count of custom allowed domains.
+	 *
+	 * @return int Number of custom allowed domains.
+	 */
+	public function get_custom_allowed_count(): int {
+		return count( $this->custom_allowed );
 	}
 
 	/**
@@ -104,6 +370,11 @@ class Blocklist {
 		// Check built-in allowlist
 		if ( isset( $this->get_allowed()[ $domain ] ) ) {
 			return false;
+		}
+
+		// Check custom blocked list
+		if ( isset( $this->custom_blocked[ $domain ] ) ) {
+			return true;
 		}
 
 		// Check disposable list (handles subdomains)
@@ -164,7 +435,7 @@ class Blocklist {
 	}
 
 	/**
-	 * Add domains to the custom blocklist.
+	 * Add domains to the custom blocklist (runtime only, no persistence).
 	 *
 	 * @param array|string $domains Domain or array of domains to block.
 	 *
@@ -184,7 +455,7 @@ class Blocklist {
 	}
 
 	/**
-	 * Add domains to the custom allowlist.
+	 * Add domains to the custom allowlist (runtime only, no persistence).
 	 *
 	 * @param array|string $domains Domain or array of domains to allow.
 	 *
@@ -204,7 +475,7 @@ class Blocklist {
 	}
 
 	/**
-	 * Remove a domain from the custom blocklist.
+	 * Remove a domain from the custom blocklist (runtime only, no persistence).
 	 *
 	 * @param string $domain Domain to unblock.
 	 *
@@ -218,7 +489,7 @@ class Blocklist {
 	}
 
 	/**
-	 * Remove a domain from the custom allowlist.
+	 * Remove a domain from the custom allowlist (runtime only, no persistence).
 	 *
 	 * @param string $domain Domain to disallow.
 	 *
@@ -235,18 +506,11 @@ class Blocklist {
 	 * Get all custom blocked domains.
 	 *
 	 * @return array List of blocked domains.
+	 *
+	 * @deprecated Use get_custom_blocked() instead.
 	 */
 	public function get_blocked(): array {
-		return array_keys( $this->custom_blocked );
-	}
-
-	/**
-	 * Get all custom allowed domains.
-	 *
-	 * @return array List of allowed domains.
-	 */
-	public function get_custom_allowed(): array {
-		return array_keys( $this->custom_allowed );
+		return $this->get_custom_blocked();
 	}
 
 	/**
@@ -261,11 +525,18 @@ class Blocklist {
 	/**
 	 * Clear all custom blocked and allowed domains.
 	 *
+	 * @param bool $persist Whether to save empty lists to files.
+	 *
 	 * @return self
 	 */
-	public function clear(): self {
+	public function clear( bool $persist = false ): self {
 		$this->custom_blocked = [];
 		$this->custom_allowed = [];
+
+		if ( $persist ) {
+			$this->save_custom_blocked();
+			$this->save_custom_allowed();
+		}
 
 		return $this;
 	}
