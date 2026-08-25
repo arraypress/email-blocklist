@@ -375,12 +375,12 @@ trait CustomLists {
 	 *
 	 * @return bool True on success.
 	 */
-	private function save_json_list( array $list, ?string $file ): bool {
+	private function save_json_list( array $entries, ?string $file ): bool {
 		if ( $file === null ) {
 			return false;
 		}
 
-		$domains = array_keys( $list );
+		$domains = array_keys( $entries );
 		sort( $domains );
 
 		$content = json_encode( $domains, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
@@ -397,6 +397,10 @@ trait CustomLists {
 	 *
 	 * @return string Normalized lowercase domain.
 	 */
+	// The sniff does not distinguish traits. Private abstract methods are illegal
+	// on a class but legal in a trait, where they oblige the using class to supply
+	// a private implementation -- which is what is wanted here: normalize_domain()
+	// is an implementation detail of the composition, not part of anyone's API.
+	// phpcs:ignore PHPCompatibility.Classes.ForbiddenAbstractPrivateMethods.Found
 	abstract private function normalize_domain( string $domain ): string;
-
 }

@@ -257,13 +257,13 @@ class Blocklist {
 	 *
 	 * @return bool True if domain or parent is in list.
 	 */
-	private function domain_in_list( string $domain, array $list ): bool {
+	private function domain_in_list( string $domain, array $domains ): bool {
 		$parts = explode( '.', $domain );
 		$count = count( $parts );
 
-		for ( $i = 0; $i < $count - 1; $i ++ ) {
+		for ( $i = 0; $i < $count - 1; $i++ ) {
 			$check = implode( '.', array_slice( $parts, $i ) );
-			if ( isset( $list[ $check ] ) ) {
+			if ( isset( $domains[ $check ] ) ) {
 				return true;
 			}
 		}
@@ -321,5 +321,4 @@ class Blocklist {
 
 		return $domain;
 	}
-
 }
